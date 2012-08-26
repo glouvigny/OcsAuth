@@ -8,7 +8,7 @@ SRCDOC = oauth.ml
 CMO = $(SRC:.ml=.cmo)
 CMI = $(SRC:.ml=.cmi)
 
-PACKS = netstring,netclient,equeue-ssl
+PACKS = netstring,netclient,equeue-ssl,str
 COMPILER = ocamlc
 DOCCOMPILER = ocamldoc
 OCAMLFIND = ocamlfind
