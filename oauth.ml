@@ -1,12 +1,12 @@
 (*
-   Require Netencoding.Url
+   Require lib > Netencoding.Url
  *)
 
 (**
   Mono threaded OAuth 2 client for OCaml
  *)
 
-open Https_client
+open Https_client (* needed as OAuth 2.0 requires HTTPS *)
 open Http_client
 open Http_client.Convenience
 
@@ -37,7 +37,8 @@ exception OAuthException of (int * string)
    OAuth versions supported
  *)
 type oAuthVersion =
-  | OAUTH_2
+  | OAUTH_2_10_JSON (* Google uses JSON for its token response *)
+  | OAUTH_2_10_DATASTRING  (* FB uses a datastring as its token response *)
 
 (**
    OAuth HTTP methods supported
@@ -57,7 +58,7 @@ type oAuthUserStatus =
   | Token of (string * int) (** Access Token with an expiration timestamp set *)
 
 (**
-   API definition type
+   API endpoints
  
    api_login_url string URL where the user will be redirected for login
    api_token_url string URL where the OAuth access token will be retrieved
@@ -77,7 +78,7 @@ type oAuthAPI = {
 type oAuthPermission = (string)
 
 class oAuthUser = fun ?(status = LoggedOut) ?(permissions = [""]) () ->
-object (this)
+object (self)
     val mutable status = status
     val mutable permissions = permissions
 
@@ -136,7 +137,7 @@ class oAuthClient =
     ?(state = "")
     () ->
 
-  object (this)
+  object (self)
       val id = id
       val secret = secret
       val endpoint = endpoint
@@ -150,7 +151,7 @@ class oAuthClient =
 
          @return string
        *)
-      method random_token () = Digest.to_hex (
+      method randomToken () = Digest.to_hex (
         Digest.string (
           Int32.to_string (
             Random.int32 (
@@ -166,7 +167,7 @@ class oAuthClient =
        *)
       method findParam needle l = match List.hd l with
       | (name, value) when ((String.compare name needle) == 0) -> name
-      | _ -> this#findParam needle (List.tl l)
+      | _ -> self#findParam needle (List.tl l)
 
       (**
          Get user
@@ -190,7 +191,7 @@ class oAuthClient =
        *)
       method getState () =
           if ((String.length state) == 0) then 
-            state <- this#random_token ();
+            state <- self#randomToken ();
           state
 
       (**
@@ -205,7 +206,8 @@ class oAuthClient =
               ("client_id",  id) ;
               ("redirect_uri",  redirect_url) ;
               ("scope", (String.concat " " scope)) ;
-              ("state",  (this#getState ())) ;
+              ("response_type", "code") ;
+              ("state",  (self#getState ())) ;
           ]
 
       (**
@@ -219,54 +221,87 @@ class oAuthClient =
           | _ -> id ^ "|" ^ secret
 
       (**
+         Get access token for current user, if user is not logged returns
+         application Access Token
+
+         @return string
+       *)
+      method getCode () = match user#getStatus () with
+          | Code (code) -> code
+          | _ -> failwith "No code defined"
+
+      (**
          Get an URL to exchange code to a token.
 
          @param oAuthPermission list scope
          @param string redirect_url
        *)
-      method getAccessTokenUrl redirect_url () = 
-          match user#getStatus () with
-          | Code (code) ->
-              endpoint.api_token_url ^ "?" ^
-                  Netencoding.Url.mk_url_encoded_parameters [
-                      ("client_id", id);
-                      ("client_secret", secret);
-                      ("redirect_uri",  redirect_url) ;
-                      ("code", code);
-                  ]
-          | Token (_, _) -> raise (Failure "User is already logged")
-          | _ -> raise (Failure "No code provided")
+      method getAccessTokenUrl redirect_url code = 
+        endpoint.api_token_url ^ "?" ^
+            Netencoding.Url.mk_url_encoded_parameters [
+                ("client_id", id) ;
+                ("client_secret", secret) ;
+                ("redirect_uri",  redirect_url) ;
+                ("grant_type", "authorization_code") ;
+                ("code", code) ;
+            ]
 
       (**
          Exchange a code for an access token 
 
          @return unit
        *)
-      method exchangeCode () =
-          let url = this#getAccessTokenUrl "http://TODO.fr" () in
+      method exchangeCodeForAccessToken redirect_url ?(code = self#getCode ()) () =
+          let url = self#getAccessTokenUrl redirect_url code in
           let response = http_post_message url [] in
           match response#response_status_code with
           | 200 -> 
               let resp_list = Netencoding.Url.dest_url_encoded_parameters
                 (response#get_resp_body ()) in
-              let token = this#findParam 
+              let token = self#findParam 
                 "access_token" resp_list in
               let expires = int_of_string 
-                (this#findParam "expires" resp_list) in
+                (self#findParam "expires" resp_list) in
               user#setToken token expires
-          | _ -> raise (OAuthException (400, "Failure on HTTP query"))
+          | _ -> raise (OAuthException (400, "Failure on HTTP request"))
+
+      (**
+        Appends params to url (for GET, PUT, DELETE)
+
+        @return string
+       *)
+      method paramsToUrl url params =
+        url ^ "?" ^ Netencoding.Url.mk_url_encoded_parameters params
 
       (**
         Do an API call
         @todo
        *)
       method api
-        (action : string)
+        action
         ?(http_method = GET)
-        ?(http_params = [("", "")])
+        ?(http_params = [])
         ?(http_content = "")
         () =
-        ()
+        let http_params = (* appends access token to parameters *)
+          http_params@[("access_token", self#getAccessToken ())] in
+        let http_url =  (* check if a full URL is given *)
+          if Str.string_match (Str.regexp "^https://") action 0 then
+            action
+          else
+            endpoint.api_base_url ^ action
+          in
+        let http_response = match http_method with
+          | GET -> http_get_message (self#paramsToUrl http_url http_params)
+          | POST -> http_post_message http_url http_params
+          | PUT -> http_put_message
+            (self#paramsToUrl http_url http_params) http_content
+          | DELETE -> http_delete_message
+            (self#paramsToUrl http_url http_params)
+        in
+        match http_response#response_status_code with
+          | 200 -> "ok"
+          | _ -> raise (OAuthException (400, "Failure on HTTP request"))
 
   end
 
@@ -274,14 +309,14 @@ class oAuthClient =
    OAUTH ENDPOINT EXAMPLES
  *)
 
-let facebook_api_endpoint = {
+let facebook_oauth_endpoint = {
   api_login_url = "https://www.facebook.com/dialog/oauth";
   api_token_url = "https://graph.facebook.com/oauth/access_token";
   api_base_url = "https://graph.facebook.com/";
   oauth_version = OAUTH_2;
 }
 
-let google_api_endpoint = {
+let google_oauth_endpoint = {
   api_login_url = "https://accounts.google.com/o/oauth2/auth";
   api_token_url = "https://accounts.google.com/o/oauth2/token";
   api_base_url = "https://www.googleapis.com/oauth2/v1/";
