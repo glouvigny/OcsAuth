@@ -1,15 +1,19 @@
 (*
- * Require Netencoding.Url
+   Require Netencoding.Url
+ *)
+
+(**
+  Mono threaded OAuth 2 client for OCaml
  *)
 
 open Https_client
 open Http_client
 open Http_client.Convenience
 
-(**
- * Initialize random stuff:
- * - integer generator
- * - https client
+(*
+ Initialize random stuff:
+ - integer generator
+ - https client
  *)
 let _ = Random.self_init ()
 let _ = Ssl.init()
@@ -21,35 +25,44 @@ let _ = configure_pipeline
   )
 
 (*
- * TYPES
+   TYPES
  *)
 
 (**
- * OAuth Exception
+   OAuth Exception
  *)
 exception OAuthException of (int * string)
 
 (**
- * OAuth versions supported
+   OAuth versions supported
  *)
 type oAuthVersion =
   | OAUTH_2
 
 (**
- * OAuth user status
+   OAuth HTTP methods supported
  *)
-type oAuthUserStatus =
-  | LoggedOut (* Logged out *)
-  | Code of string (* Code to be exchanged for an Access Token *)
-  | Token of (string * int) (* Access Token with an expiration timestamp set *)
+type oAuthHTTPMethods =
+  | GET
+  | POST
+  | PUT
+  | DELETE
 
 (**
- * API definition type
- *
- * api_login_url string URL where the user will be redirected for login
- * api_token_url string URL where the OAuth access token will be retrieved
- * api_base_url string OAuth API base URL, for more simple API calls
- * oauth_version oAuthVersion OAuth version used by API
+   OAuth user status
+ *)
+type oAuthUserStatus =
+  | LoggedOut (** Logged out *)
+  | Code of string (** Code to be exchanged for an Access Token *)
+  | Token of (string * int) (** Access Token with an expiration timestamp set *)
+
+(**
+   API definition type
+ 
+   api_login_url string URL where the user will be redirected for login
+   api_token_url string URL where the OAuth access token will be retrieved
+   api_base_url string OAuth API base URL, for more simple API calls
+   oauth_version oAuthVersion OAuth version used by API
  *)
 type oAuthAPI = { 
   api_login_url : string;
@@ -59,7 +72,7 @@ type oAuthAPI = {
 }
 
 (**
- * OAuth API Permission
+   OAuth API Permission
  *)
 type oAuthPermission = (string)
 
@@ -69,51 +82,48 @@ object (this)
     val mutable permissions = permissions
 
     (**
-     * Get user's status
-     *
-     * @param unit
-     * @return oAuthUserStatus
+       Get user's status
+
+       @return oAuthUserStatus
      *)
     method getStatus () = status
 
     (**
-     * Get user's permissions
-     *
-     * @param unit
-     * @return (oAuthPermission) list
+       Get user's permissions
+
+       @return (oAuthPermission) list
      *)
     method getPermissions () = permissions
 
     (**
-     * Set user's OAuth code
-     *
-     * @param string
-     * @return err?
+       Set user's OAuth code
+
+       @param code OAuth Code
+       @return err?
      *)
     method setCode code = status <- Code (code)
 
     (**
-     * Set user's access token
-     *
-     * @param string
-     * @param int
-     * @return err?
+       Set user's access token
+
+       @param token OAuth Access Token
+       @param int Access Token expiration timestamp
+       @return err?
      *)
     method setToken token expires = status <-  Token (token, expires)
 
     (**
-     * Mark user as logged out
-     *
-     * @param unit
-     * @return err?
+       Mark user as logged out
+
+       @return err?
      *)
     method setLoggedOut () = status <- LoggedOut
 
     (**
-     * Set user's status
-     *
-     * @param oAuthUserStatus
-     * @return err?
+       Set user's status
+
+       @param new_status User new status
+       @return err?
      *)
     method setStatus new_status = status <- new_status
 end
@@ -136,10 +146,9 @@ class oAuthClient =
       val mutable state = state
 
       (**
-       * Generate a md5 from a random int
-       *
-       * @param unit
-       * @return string
+         Generate a md5 from a random int
+
+         @return string
        *)
       method random_token () = Digest.to_hex (
         Digest.string (
@@ -148,39 +157,36 @@ class oAuthClient =
               Int32.max_int))))
 
       (**
-       * Find an element in a key * value list
-       *
-       * @param string needle
-       * @param (string * string) list l
-       * @throws Failure
-       * @return string
+         Find an element in a key * value list
+
+         @param needle element to be found
+         @param l (string * string) list l
+         @raise Failure Fails when key not found
+         @return string
        *)
       method findParam needle l = match List.hd l with
       | (name, value) when ((String.compare name needle) == 0) -> name
       | _ -> this#findParam needle (List.tl l)
 
       (**
-       * Get user
-       *
-       * @param unit
-       * @return oAuthUser
+         Get user
+
+         @return oAuthUser
        *)
       method getUser () = user
 
       (**
-       * Get identifier
-       *
-       * @param unit
-       * @return string
+         Get identifier
+
+         @return string
        *)
       method getIdentifier () = identifier
 
       (**
-       * Return current state (csrf unique token)
-       * Generate one if not found
-       *
-       * @param unit
-       * @return string
+         Return current state (csrf unique token)
+         Generate one if not found
+
+         @return string
        *)
       method getState () =
           if ((String.length state) == 0) then 
@@ -188,11 +194,11 @@ class oAuthClient =
           state
 
       (**
-       * Get a login URL for OAuth API.
-       *
-       * @param oAuthPermission list scope
-       * @param string redirect_url
-       * @return string
+         Get a login URL for OAuth API.
+
+         @param oAuthPermission list scope
+         @param string redirect_url
+         @return string
        *)
       method getLoginUrl scope redirect_url = endpoint.api_login_url ^ "?" ^
           Netencoding.Url.mk_url_encoded_parameters [
@@ -203,21 +209,20 @@ class oAuthClient =
           ]
 
       (**
-       * Get access token for current user, if user is not logged returns
-       * application Access Token
-       *
-       * @param unit
-       * @return string
+         Get access token for current user, if user is not logged returns
+         application Access Token
+
+         @return string
        *)
       method getAccessToken () = match user#getStatus () with
           | Token (token, _) -> token
           | _ -> id ^ "|" ^ secret
 
       (**
-       * Get an URL to exchange code to a token.
-       *
-       * @param oAuthPermission list scope
-       * @param string redirect_url
+         Get an URL to exchange code to a token.
+
+         @param oAuthPermission list scope
+         @param string redirect_url
        *)
       method getAccessTokenUrl redirect_url () = 
           match user#getStatus () with
@@ -233,10 +238,9 @@ class oAuthClient =
           | _ -> raise (Failure "No code provided")
 
       (**
-       * Exchange a code for an access token 
-       *
-       * @param unit
-       * @return unit
+         Exchange a code for an access token 
+
+         @return unit
        *)
       method exchangeCode () =
           let url = this#getAccessTokenUrl "http://TODO.fr" () in
@@ -252,10 +256,22 @@ class oAuthClient =
               user#setToken token expires
           | _ -> raise (OAuthException (400, "Failure on HTTP query"))
 
+      (**
+        Do an API call
+        @todo
+       *)
+      method api
+        (action : string)
+        ?(http_method = GET)
+        ?(http_params = [("", "")])
+        ?(http_content = "")
+        () =
+        ()
+
   end
 
 (*
- * OAUTH ENDPOINT EXAMPLES
+   OAUTH ENDPOINT EXAMPLES
  *)
 
 let facebook_api_endpoint = {
