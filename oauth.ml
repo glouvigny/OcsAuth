@@ -55,7 +55,7 @@ type oAuthHTTPMethods =
 type oAuthUserStatus =
   | LoggedOut (** Logged out *)
   | Code of string (** Code to be exchanged for an Access Token *)
-  | Token of (string * int) (** Access Token with an expiration timestamp set *)
+  | Token of (string * int) (** Access Token with an expiration timestamp set*)
 
 (**
    API endpoints
@@ -251,7 +251,9 @@ class oAuthClient =
 
          @return unit
        *)
-      method exchangeCodeForAccessToken redirect_url ?(code = self#getCode ()) () =
+      method exchangeCodeForAccessToken
+	redirect_url
+	?(code = self#getCode ()) () =
           let url = self#getAccessTokenUrl redirect_url code in
           let response = http_post_message url [] in
           match response#response_status_code with
