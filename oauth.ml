@@ -4,11 +4,14 @@
 
 (**
   Mono threaded OAuth 2 client for OCaml
+
+  Only Bearer is supported
  *)
 
 open Https_client (* needed as OAuth 2.0 requires HTTPS *)
 open Http_client
 open Http_client.Convenience
+open Yojson.Basic.Util
 
 (*
  Initialize random stuff:
@@ -37,8 +40,7 @@ exception OAuthException of (int * string)
    OAuth versions supported
  *)
 type oAuthVersion =
-  | OAUTH_2_10_JSON (* Google uses JSON for its token response *)
-  | OAUTH_2_10_DATASTRING  (* FB uses a datastring as its token response *)
+  | OAUTH_2_D10 (* Google uses JSON for its token response *)
 
 (**
    OAuth HTTP methods supported
@@ -247,24 +249,58 @@ class oAuthClient =
             ]
 
       (**
-         Exchange a code for an access token 
+        Parse an access token stored in a JSON object.
+        User object is not modified as external methods may be used.
+
+        @return (string, int) pair
+       *)
+      method jsonEncodedTokenAccess (response : http_call) = 
+        let json = Yojson.Basic.from_string (response#get_resp_body ()) in
+        let access_token = 
+          List.hd ([json]
+          |> filter_member "access_token"
+          |> filter_string
+          ) in
+        let expires = 
+          List.hd ([json]
+          |> filter_member "expires_in"
+          |> filter_number
+          ) in
+        (access_token, expires)
+
+
+      (**
+        Parse an access token stored in an URL encoded-style answer.
+        User object is not modified as external methods may be used.
+        This is mainly intended to be used with Facebook, which doesn't follow
+        recent OAuth 2 RFC.
+
+        @return (string, int) pair
+       *)
+      method urlEncodedTokenAccess (response : http_call) = 
+        let resp_list = Netencoding.Url.dest_url_encoded_parameters
+          (response#get_resp_body ()) in
+        let token = self#findParam "access_token" resp_list in
+        let expires = int_of_string (self#findParam "expires" resp_list) in
+          (token, expires)
+
+      (**
+         Exchange a code for an access token
+         Uses jsonEncodedTokenAccess as default response parser (OAuth 2 d. 26)
 
          @return unit
        *)
       method exchangeCodeForAccessToken
-	redirect_url
-	?(code = self#getCode ()) () =
+      	redirect_url
+        ?(response_parse = self#jsonEncodedTokenAccess)
+      	?(code = self#getCode ()) () =
           let url = self#getAccessTokenUrl redirect_url code in
           let response = http_post_message url [] in
           match response#response_status_code with
-          | 200 -> 
-              let resp_list = Netencoding.Url.dest_url_encoded_parameters
-                (response#get_resp_body ()) in
-              let token = self#findParam 
-                "access_token" resp_list in
-              let expires = int_of_string 
-                (self#findParam "expires" resp_list) in
-              user#setToken token expires
+          | 200 -> (
+              match response_parse response with
+              | (token, expires) -> user#setToken token, expires
+            )
           | _ -> raise (OAuthException (400, "Failure on HTTP request"))
 
       (**
@@ -315,12 +351,12 @@ let facebook_oauth_endpoint = {
   api_login_url = "https://www.facebook.com/dialog/oauth";
   api_token_url = "https://graph.facebook.com/oauth/access_token";
   api_base_url = "https://graph.facebook.com/";
-  oauth_version = OAUTH_2;
+  oauth_version = OAUTH_2_D10;
 }
 
 let google_oauth_endpoint = {
   api_login_url = "https://accounts.google.com/o/oauth2/auth";
   api_token_url = "https://accounts.google.com/o/oauth2/token";
   api_base_url = "https://www.googleapis.com/oauth2/v1/";
-  oauth_version = OAUTH_2;
+  oauth_version = OAUTH_2_D10;
 }
