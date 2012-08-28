@@ -113,7 +113,7 @@ object (self)
        @param int Access Token expiration timestamp
        @return err?
      *)
-    method setToken token expires = status <-  Token (token, expires)
+    method setAccessToken token expires = status <-  Token (token, expires)
 
     (**
        Mark user as logged out
@@ -168,7 +168,7 @@ class oAuthClient =
          @return string
        *)
       method findParam needle l = match List.hd l with
-      | (name, value) when ((String.compare name needle) == 0) -> name
+      | (name, value) when ((String.compare name needle) == 0) -> value
       | _ -> self#findParam needle (List.tl l)
 
       (**
@@ -266,7 +266,7 @@ class oAuthClient =
           |> filter_member "expires_in"
           |> filter_number
           ) in
-        (access_token, expires)
+        (access_token, int_of_float expires)
 
 
       (**
@@ -274,6 +274,9 @@ class oAuthClient =
         User object is not modified as external methods may be used.
         This is mainly intended to be used with Facebook, which doesn't follow
         recent OAuth 2 RFC.
+
+	 Use it this way:
+	 ~response_parse: (api_client#urlEncodedTokenAccess)
 
         @return (string, int) pair
        *)
@@ -299,7 +302,7 @@ class oAuthClient =
           match response#response_status_code with
           | 200 -> (
               match response_parse response with
-              | (token, expires) -> user#setToken token, expires
+              | (token, expires) -> user#setAccessToken token, expires
             )
           | _ -> raise (OAuthException (400, "Failure on HTTP request"))
 
@@ -338,7 +341,7 @@ class oAuthClient =
             (self#paramsToUrl http_url http_params)
         in
         match http_response#response_status_code with
-          | 200 -> "ok"
+          | 200 -> http_response#get_resp_body ()
           | _ -> raise (OAuthException (400, "Failure on HTTP request"))
 
   end
@@ -347,6 +350,10 @@ class oAuthClient =
    OAUTH ENDPOINT EXAMPLES
  *)
 
+(* 
+   Register your Facebook app at
+   https://developers.facebook.com/apps
+*)
 let facebook_oauth_endpoint = {
   api_login_url = "https://www.facebook.com/dialog/oauth";
   api_token_url = "https://graph.facebook.com/oauth/access_token";
@@ -354,9 +361,58 @@ let facebook_oauth_endpoint = {
   oauth_version = OAUTH_2_D10;
 }
 
+(*
+  Register your Google app at
+  https://code.google.com/apis/console/
+*)
 let google_oauth_endpoint = {
   api_login_url = "https://accounts.google.com/o/oauth2/auth";
   api_token_url = "https://accounts.google.com/o/oauth2/token";
   api_base_url = "https://www.googleapis.com/oauth2/v1/";
   oauth_version = OAUTH_2_D10;
 }
+
+(*
+  Register your Github app at
+  https://github.com/settings/applications/new
+*)
+let github_oauth_endpoint = {
+  api_login_url = "https://github.com/login/oauth/authorize";
+  api_token_url = "https://github.com/login/oauth/access_token";
+  api_base_url = "https://api.github.com/";
+  oauth_version = OAUTH_2_D10;
+}
+
+(*
+  Register your Meetup app at
+  http://www.meetup.com/meetup_api/oauth_consumers/create/
+*)
+let meetup_oauth_endpoint = {
+  api_login_url = "https://secure.meetup.com/oauth2/authorize";
+  api_token_url = "https://secure.meetup.com/oauth2/access";
+  api_base_url = "http://api.meetup.com/";
+  oauth_version = OAUTH_2_D10;
+}
+
+(*
+  Register you foursquare app at
+  https://foursquare.com/oauth/register
+*)
+let foursquare_oauth_endpoint = {
+  api_login_url = "https://foursquare.com/oauth2/authenticate";
+  api_token_url = "https://foursquare.com/oauth2/access_token";
+  api_base_url = "https://api.foursquare.com/v2";
+  oauth_version = OAUTH_2_D10;
+}
+
+(*
+  Register your Live app at
+  https://manage.dev.live.com/AddApplication.aspx
+*)
+let microsoft_oauth_endpoint = {
+  api_login_url = "https://login.live.com/oauth20_authorize.srf";
+  api_token_url = "https://login.live.com/oauth20_token.srf";
+  api_base_url = "http://apis.live.net/v5.0/";
+  oauth_version = OAUTH_2_D10;
+}
+
