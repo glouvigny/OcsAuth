@@ -40,7 +40,7 @@ exception OAuthException of (int * string)
    OAuth versions supported
  *)
 type oAuthVersion =
-  | OAUTH_2_D10 (* Google uses JSON for its token response *)
+  | OAUTH_2_D10
 
 (**
    OAuth HTTP methods supported
@@ -337,7 +337,7 @@ let github_oauth_endpoint = {
 }
 
 (*
-  Register you foursquare app at
+  Register your foursquare app at
   https://foursquare.com/oauth/register
 *)
 let foursquare_oauth_endpoint = {
@@ -359,7 +359,7 @@ let foursquare_oauth_endpoint = {
 let meetup_oauth_endpoint = {
   api_login_url = "https://secure.meetup.com/oauth2/authorize";
   api_token_url = "https://secure.meetup.com/oauth2/access";
-  api_base_url = "http://api.meetup.com/";
+  api_base_url = "https://api.meetup.com/";
   auth_function = decode_json_token_access;
   oauth_version = OAUTH_2_D10;
 }
@@ -371,7 +371,7 @@ let meetup_oauth_endpoint = {
 let microsoft_oauth_endpoint = {
   api_login_url = "https://login.live.com/oauth20_authorize.srf";
   api_token_url = "https://login.live.com/oauth20_token.srf";
-  api_base_url = "http://apis.live.net/v5.0/";
+  api_base_url = "httpS://apis.live.net/v5.0/";
   auth_function = decode_json_token_access;
   oauth_version = OAUTH_2_D10;
 }
