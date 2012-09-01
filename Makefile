@@ -2,7 +2,7 @@ VERSION = 1.0.0
 
 FLAGS = -linkpkg
 
-SRC = oauth.ml oauth_test.ml
+SRC = oauth.ml oauth_endpoints.ml test_callbacks.ml oauth_api_tests.ml
 SRCDOC = oauth.ml
 
 CMO = $(SRC:.ml=.cmo)
